@@ -99,10 +99,10 @@ def store_occupancy(spots, occupied):
 
         index += 1
 
-    datapath = Path(f"data/occupancies")
-    datapath.mkdir(parents=True, exist_ok=True)
+    DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "occupancies"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     
-    with open(f"data/occupancies/{Path(filename).stem}.json", "w") as file:
+    with open(f"{DATA_DIR}/{Path(filename).stem}.json", "w") as file:
         json.dump(data, file, indent=4)
 
 def compute():
@@ -113,19 +113,23 @@ def compute():
 #                    INITIALIZATION                    #
 ########################################################
 
-model = YOLO("yolov8s-visdrone.pt")
+APP_PATH = Path(__file__).resolve().parent.parent
+MODEL_PATH = APP_PATH / "weights" / "yolov8s-visdrone.pt"
+
+model = YOLO(MODEL_PATH)
 CLASSES = [3, 4, 5, 8, 9]
 
 # CHANGE THESE FOR DIFFERENT IMAGES AND VERSIONS
 filename = "sample.jpg"
 version = 0
 
-bound_path = f"data/bounds/{Path(filename).stem}/{version:04d}.json"
-img_path = f"data/images/{filename}"
+BOUND_PATH = APP_PATH / "data" / "bounds" / Path(filename).stem / f"{version:04d}.json"
 
-with open("data/bounds/sample/0000.json") as file:
+IMG_PATH = APP_PATH / "data" / "images" / filename
+
+with open(BOUND_PATH) as file:
     spots = json.load(file)
-img = cv2.imread(img_path)
+img = cv2.imread(IMG_PATH)
 
 # Display results for debug purposes
 results = model.predict(img, classes=CLASSES, conf=0.4, verbose=False)
