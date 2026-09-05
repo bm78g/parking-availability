@@ -28,14 +28,16 @@ def draw_bound(bound):
 img_name = "sample.jpg"
 version = 0
 
-bound_path = f"data/bounds/{Path(img_name).stem}/{version:04d}.json"
-img_path = f"data/images/{img_name}"
+APP_PATH = Path(__file__).resolve().parent.parent
+BOUND_DIR = APP_PATH / "data" / "bounds" / Path(img_name).stem / f"{version:04d}.json"
 
-img = cv2.imread(img_path)
+IMG_PATH = APP_PATH / "data" / "images" / img_name
+
+img = cv2.imread(IMG_PATH)
 if img is None:
     sys.exit("Image not found")
 
-with open(bound_path, 'r') as file:
+with open(BOUND_DIR, 'r') as file:
     bounds = json.load(file)
 
 for bound in bounds:
