@@ -16,11 +16,13 @@ def capture_frame():
         return_value, frame = camera.read()
 
         if return_value:
-            store_path = Path("data/")
-            store_path.mkdir(parents=True, exist_ok=True)
-
             filename = datetime.now(timezone.utc).strftime("%m%d-%Y-%H%M%S")
-            cv2.imwrite(f"data/{filename}.jpg", frame)
+            DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+            print(f"{DATA_DIR}/{filename}.jpg")
+
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+            cv2.imwrite(f"{DATA_DIR}/{filename}.jpg", frame)
         else:
             sys.exit("Error: Could not read frame from video")
 
