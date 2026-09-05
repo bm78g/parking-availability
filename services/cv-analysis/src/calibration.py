@@ -83,18 +83,18 @@ def store_bounds():
 
     # Create directory
     filename_stem = Path(filename).stem
-    bounds_dir = Path(f"data/bounds/{filename_stem}")
-    bounds_dir.mkdir(parents=True, exist_ok=True)
 
     count = 0
     while True:
-        store_path = f"data/bounds/{filename_stem}/{count:04d}.json"
-        store_path = Path(store_path)
+        BOUND_DIR = APP_PATH / "data" / "bounds" / filename_stem
+        FILE_PATH = BOUND_DIR / f"{count:04d}.json"
 
-        if store_path.is_file():
+        BOUND_DIR.mkdir(parents=True, exist_ok=True)
+
+        if FILE_PATH.is_file():
             count += 1
         else:
-            with open(store_path, "w") as file:
+            with open(FILE_PATH, "w") as file:
                 json.dump(bounds, file, indent=4)
             break
 
@@ -102,9 +102,10 @@ def store_bounds():
 #                    INITIALIZATION                    #
 ########################################################
 
-path = "data/images/"
+APP_PATH = Path(__file__).resolve().parent.parent
+IMG_PATH = APP_PATH / "data" / "images"
 filename = "sample.jpg"
-img = cv2.imread(path + filename)
+img = cv2.imread(f"{IMG_PATH}/{filename}")
 
 if img is None:
     sys.exit("Image not found")
