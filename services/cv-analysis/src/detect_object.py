@@ -74,6 +74,7 @@ def match_vehicles(results, spots):
                 occupied.append(matched)
 
     occupied = list(set(occupied))
+    occupied.sort()
     return occupied
 
 ########################################################
@@ -84,10 +85,12 @@ def store_occupancy(spots, occupied):
     data = []
     queue = occupied.copy()
 
+    # Pops from the array for every match
+    # Thus, assumes the array is sorted without duplicates
     index = 0
     for spot in spots:
         occupied = False
-        if index == queue[0]:
+        if len(queue) > 0 and index == queue[0]:
             occupied = True
             queue.pop(0)
 
@@ -137,6 +140,7 @@ results = model.predict(img, classes=CLASSES, conf=0.4, verbose=False)
 annotated_img = results[0].plot()
 
 # UNCOMMENT FOR VISUAL DEBUG
+# compute()
 # cv2.imshow("display", annotated_img)
 
 # while True:
