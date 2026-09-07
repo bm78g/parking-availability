@@ -4,3 +4,4 @@ __pycache__
 *yolo*
 *.pt
 .DS_Store
+node_modules/

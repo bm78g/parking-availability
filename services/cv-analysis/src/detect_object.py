@@ -39,6 +39,7 @@ def match_vehicle(coords, spots):
 
     min_disp = math.inf
     nearest_spot = None
+    nearest_center = None
     for spot in spots:
         # Find centers and use Pythagorean theorem to find displacement
         x_diff = spot["center"][0] - contact_pos[0]
@@ -58,7 +59,10 @@ def match_vehicle(coords, spots):
         if disp < min_disp and disp < avg_radius:
             min_disp = disp
             nearest_spot = spot["id"]
+            nearest_center = spot["center"]
     
+    cv2.circle(annotated_img, center=nearest_center, radius=round(avg_radius), color=(0, 255, 255), thickness=1)
+
     return nearest_spot
 
 # Returns a list of occupied spots by id
@@ -140,10 +144,10 @@ results = model.predict(img, classes=CLASSES, conf=0.4, verbose=False)
 annotated_img = results[0].plot()
 
 # UNCOMMENT FOR VISUAL DEBUG
-# compute()
-# cv2.imshow("display", annotated_img)
+compute()
+cv2.imshow("display", annotated_img)
 
-# while True:
-#     key = cv2.waitKey(1) & 0xFF
-#     if key == ord('s'):
-#         break
+while True:
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('s'):
+        break
