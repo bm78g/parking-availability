@@ -36,5 +36,3 @@ def upload():
             upload_frame(img)
     except Exception as err:
         print(f"Failed upload: {err}")
-
-upload()
