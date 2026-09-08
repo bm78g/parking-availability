@@ -30,6 +30,7 @@ def capture_frame():
 
     camera.release()
 
+# TODO: Add command line argument to simply take a picture and save it
 def main():
     try:
         while True:
