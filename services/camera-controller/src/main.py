@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from datetime import datetime, timezone
 from s3_upload import upload
+from eventbridge_trigger import trigger_analysis
 
 def capture_frame():
     camera = cv2.VideoCapture(0)
@@ -24,8 +25,6 @@ def capture_frame():
             DATA_DIR.mkdir(parents=True, exist_ok=True)
 
             cv2.imwrite(f"{DATA_DIR}/{filename}.jpg", frame)
-
-            upload()
         else:
             sys.exit("Error: Could not read frame from video")
 
@@ -35,6 +34,8 @@ def main():
     try:
         while True:
             capture_frame()
+            upload()
+            trigger_analysis()
             time.sleep(5)
     except KeyboardInterrupt:
         print("Exiting program...")
