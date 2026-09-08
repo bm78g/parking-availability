@@ -3,11 +3,11 @@ import os
 
 import aws_cdk as cdk
 
-from infra.infra_stack import InfraStack
+from infra.camera_upload_stack import CameraUploadStack
 
 
 app = cdk.App()
-InfraStack(app, "InfraStack",
+CameraUploadStack(app, "CameraUploadStack",
     # If you don't specify 'env', this stack will be environment-agnostic.
     # Account/Region-dependent features and context lookups will not work,
     # but a single synthesized template can be deployed anywhere.
