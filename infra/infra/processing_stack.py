@@ -1,3 +1,4 @@
+from typing import Optional
 import aws_cdk as cdk
 from aws_cdk import (
     Stack,
@@ -19,7 +20,7 @@ class ProcessingStack(Stack):
         scope: Construct,
         construct_id: str,
         image_bucket: s3.IBucket,
-        telemetry_table: dynamodb.ITable,
+        telemetry_table: Optional[dynamodb.ITable] = None,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -34,7 +35,27 @@ class ProcessingStack(Stack):
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.RETAIN,
-            point_in_time_recovery=True,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
+        )
+
+        self.telemetry_table = telemetry_table or dynamodb.Table(
+            self,
+            "CameraTelemetryTable",
+            partition_key=dynamodb.Attribute(
+                name="camera_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="timestamp",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
         )
 
         # EventBridge
@@ -53,14 +74,17 @@ class ProcessingStack(Stack):
             timeout=Duration.seconds(45),
             environment={
                 "CONFIG_TABLE_NAME": self.config_table.table_name,
-                "TELEMETRY_TABLE_NAME": telemetry_table.table_name,
+                "TELEMETRY_TABLE_NAME": self.telemetry_table.table_name,
+                "YOLO_CONFIG_DIR": "/tmp",
+                "TORCH_HOME": "/tmp",
+                "HOME": "/tmp",
             },
         )
 
         # Permissions to read S3 image, read camera config, write telemetry
         image_bucket.grant_read(self.analyzer_fn)
         self.config_table.grant_read_data(self.analyzer_fn)
-        telemetry_table.grant_write_data(self.analyzer_fn)
+        self.telemetry_table.grant_write_data(self.analyzer_fn)
 
         # EventBridge routing
         image_uploaded_rule = events.Rule(
@@ -79,3 +103,4 @@ class ProcessingStack(Stack):
         cdk.CfnOutput(self, "EventBusArn", value=self.event_bus.event_bus_arn)
         cdk.CfnOutput(self, "EventBusName", value=self.event_bus.event_bus_name)
         cdk.CfnOutput(self, "ConfigTableName", value=self.config_table.table_name)
+        cdk.CfnOutput(self, "TelemetryTableName", value=self.telemetry_table.table_name)
