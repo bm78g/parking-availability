@@ -28,8 +28,14 @@ def upload_frame(image_bytes):
     print(f"Successfully uploaded {s3_key}")
 
 def upload():
+    # Iterate through data folder to find most recent image
+    # TODO: Delete old files once data folder goes over a certain number of files
     DATA_PATH = Path(__file__).resolve().parent.parent / "data"
-    IMG_PATH = DATA_PATH / "kitty.jpg"
+    latest_file = max(
+        (f for f in DATA_PATH.iterdir() if f.is_file()),
+        key=lambda el: el.stat().st_mtime
+    )
+    IMG_PATH = DATA_PATH / latest_file
 
     try:
         with open(IMG_PATH, "rb") as img:
