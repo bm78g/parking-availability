@@ -1,8 +1,26 @@
-import cv2
-from ultralytics import YOLO
+import os
+import math
 import json
 from pathlib import Path
-import math
+import numpy as np
+import cv2
+import boto3
+from ultralytics import YOLO
+
+s3_client = boto3.client("s3")
+dynamodb = boto3.resource("dynamodb")
+
+CONFIG_TABLE_NAME = os.environ.get("CONFIG_TABLE_NAME")
+TELEMETRY_TABLE_NAME = os.environ.get("TELEMETRY_TABLE_NAME")
+
+config_table = dynamodb.Table(CONFIG_TABLE_NAME)
+telemetry_table = dynamodb.Table(TELEMETRY_TABLE_NAME)
+
+MODEL_PATH = "/var/task/weights/yolov8s-visdrone.pt"
+model = YOLO(MODEL_PATH)
+CLASSES = [3, 4, 5, 8, 9]
+
+BOUNDS_CACHE = {}
 
 ########################################################
 #                OJBECT-TO-SPOT MATCHING               #
@@ -17,37 +35,25 @@ import math
 # However, there will need to be measures to prevent an unparked
 # car from being matched to a spot.
 
+# Calculate a point horizontally center and slightly above lower bound
 def get_contact_coords(coords):
-    # Calculate a point horizontally center and slightly above lower bound
     x_center = (coords[0] + coords[2]) / 2
-
     height = coords[3] - coords[1]
     y_low = coords[3] - (height * 0.25)
-
-    contact_coords = (round(x_center), round(y_low))
-
-    cv2.circle(annotated_img, center=contact_coords, radius=3, color=(0, 0, 255), thickness=-1)
-
-    return contact_coords
+    return (round(x_center), round(y_low))
 
 # Returns the id of the nearest spot
 def match_vehicle(coords, spots):
-    # Match to closest center for now
-    # This does make matching an O(N^2) operation,
-    # but the sample size is small enough for it to not be a problem
     contact_pos = get_contact_coords(coords)
-
     min_disp = math.inf
     nearest_spot = None
-    nearest_center = None
+
     for spot in spots:
-        # Find centers and use Pythagorean theorem to find displacement
         x_diff = spot["center"][0] - contact_pos[0]
         y_diff = spot["center"][1] - contact_pos[1]
         disp = math.sqrt(math.pow(x_diff, 2) + math.pow(y_diff, 2))
 
-        # Average diagonal radius for 4 points
-        # Used as maximum distance allowed to be counted as occupying a spot
+        # Calculates average diagonal distance to compute max distance allowed
         avg_radius = 0
         for vertex in spot["vertices"]:
             x_diff_center = spot["center"][0] - vertex[0]
@@ -55,26 +61,21 @@ def match_vehicle(coords, spots):
             radius = math.sqrt(math.pow(x_diff_center, 2) + math.pow(y_diff_center, 2))
             avg_radius += radius
         avg_radius /= 4
-        
+
         if disp < min_disp and disp < avg_radius:
             min_disp = disp
             nearest_spot = spot["id"]
-            nearest_center = spot["center"]
-    
-    cv2.circle(annotated_img, center=nearest_center, radius=round(avg_radius), color=(0, 255, 255), thickness=1)
 
     return nearest_spot
 
 # Returns a list of occupied spots by id
 def match_vehicles(results, spots):
-    # Extract coords and call match_vehicle
     occupied = []
-
     for result in results:
         for box in result.boxes:
             coords = box.xyxy[0].tolist()
             matched = match_vehicle(coords, spots)
-            if matched != None:
+            if matched is not None:
                 occupied.append(matched)
 
     occupied = list(set(occupied))
@@ -85,69 +86,83 @@ def match_vehicles(results, spots):
 #                   OCCUPANCY STORAGE                  #
 ########################################################
 
-def store_occupancy(spots, occupied):
+def build_occupancy_data(spots, occupied):
     data = []
     queue = occupied.copy()
 
-    # Pops from the array for every match
-    # Thus, assumes the array is sorted without duplicates
     index = 0
     for spot in spots:
-        occupied = False
+        is_occupied = False
         if len(queue) > 0 and index == queue[0]:
-            occupied = True
+            is_occupied = True
             queue.pop(0)
 
-        occupancy = {
+        data.append({
             "id": spot["id"],
-            "occupied": occupied
-        }
-        data.append(occupancy)
-
+            "occupied": is_occupied
+        })
         index += 1
 
-    DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "occupancies"
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    
-    with open(f"{DATA_DIR}/{Path(filename).stem}.json", "w") as file:
-        json.dump(data, file, indent=4)
+    return data
 
-def compute():
-    occupied = match_vehicles(results, spots)
-    store_occupancy(spots, occupied)
+def get_camera_spots(camera_id: str) -> list:
+    if camera_id in BOUNDS_CACHE:
+        return BOUNDS_CACHE[camera_id]
 
-########################################################
-#                    INITIALIZATION                    #
-########################################################
+    response = config_table.get_item(Key={"camera_id": camera_id})
+    spots = response.get("Item", {}).get("spots")
 
-APP_PATH = Path(__file__).resolve().parent.parent
-MODEL_PATH = APP_PATH / "weights" / "yolov8s-visdrone.pt"
+    if not spots:
+        raise ValueError(f"No configuration found for camera: {camera_id}")
 
-model = YOLO(MODEL_PATH)
-CLASSES = [3, 4, 5, 8, 9]
+    BOUNDS_CACHE[camera_id] = spots
+    return spots
 
-# CHANGE THESE FOR DIFFERENT IMAGES AND VERSIONS
-filename = "sample.jpg"
-version = 0
+def lambda_handler(event, context):
+    detail = event.get("detail", {})
+    camera_id = detail.get("camera_id")
+    bucket_name = detail.get("bucket_name")
+    s3_key = detail.get("s3_key")
 
-BOUND_PATH = APP_PATH / "data" / "bounds" / Path(filename).stem / f"{version:04d}.json"
+    if not all([camera_id, bucket_name, s3_key]):
+        raise ValueError(f"Missing required event parameters: {detail}")
 
-IMG_PATH = APP_PATH / "data" / "images" / filename
+    # Retrieve parking lot configuration
+    spots = get_camera_spots(camera_id)
 
-with open(BOUND_PATH) as file:
-    spots = json.load(file)
-img = cv2.imread(IMG_PATH)
+    # Read image from S3 into memory
+    s3_response = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+    img_bytes = s3_response["Body"].read()
+    np_arr = np.frombuffer(img_bytes, np.uint8)
+    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-# Display results for debug purposes
-results = model.predict(img, classes=CLASSES, conf=0.4, verbose=False)
+    if img is None:
+        raise ValueError(f"Failed to decode image from s3://{bucket_name}/{s3_key}")
 
-annotated_img = results[0].plot()
+    # Get occupancy
+    results = model.predict(img, classes=CLASSES, conf=0.4, verbose=False)
+    occupied_ids = match_vehicles(results, spots)
+    occupancy_list = build_occupancy_data(spots, occupied_ids)
+    timestamp = Path(s3_key).stem
 
-# UNCOMMENT FOR VISUAL DEBUG
-compute()
-cv2.imshow("display", annotated_img)
+    # Save to DynamoDB
+    telemetry_table.put_item(
+        Item={
+            "camera_id": camera_id,
+            "timestamp": timestamp,
+            "s3_key": s3_key,
+            "total_spots": len(spots),
+            "occupied_count": len(occupied_ids),
+            "vacant_count": len(spots) - len(occupied_ids),
+            "occupancies": occupancy_list,
+        }
+    )
 
-while True:
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord('s'):
-        break
+    return {
+        "statusCode": 200,
+        "body": json.dumps({
+            "message": "Processed successfully",
+            "camera_id": camera_id,
+            "occupied_count": len(occupied_ids)
+        }),
+    }
