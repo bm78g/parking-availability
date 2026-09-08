@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 import aws_cdk as cdk
 from aws_cdk import (
@@ -9,7 +10,7 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_events as events,
     aws_events_targets as targets,
-    aws_iam as iam,
+    aws_ecr_assets as ecr_assets,
 )
 from constructs import Construct
 
@@ -29,6 +30,7 @@ class ProcessingStack(Stack):
         self.config_table = dynamodb.Table(
             self,
             "CameraConfigTable",
+            table_name="sample",
             partition_key=dynamodb.Attribute(
                 name="camera_id",
                 type=dynamodb.AttributeType.STRING,
@@ -65,11 +67,20 @@ class ProcessingStack(Stack):
             event_bus_name="camera-pipeline-bus",
         )
 
+        # Resolve path to services/cv-analysis relative to this file
+        cv_analysis_dir = str(
+            Path(__file__).resolve().parent.parent.parent / "services" / "cv-analysis"
+        )
+
         # OpenCV Lambda
         self.analyzer_fn = _lambda.DockerImageFunction(
             self,
             "CvAnalyzerFunction",
-            code=_lambda.DockerImageCode.from_image_asset("../services/cv-analysis"),
+            code=_lambda.DockerImageCode.from_image_asset(
+                cv_analysis_dir,
+                platform=ecr_assets.Platform.LINUX_ARM64,
+            ),
+            architecture=_lambda.Architecture.ARM_64,
             memory_size=3008,
             timeout=Duration.seconds(45),
             environment={
