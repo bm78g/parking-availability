@@ -27,6 +27,16 @@ def upload_frame(image_bytes):
     put_res.raise_for_status()
     print(f"Successfully uploaded {s3_key}")
 
+def trim_dir(DATA_PATH):
+    file_count = sum(1 for file in DATA_PATH.iterdir() if file.is_file())
+
+    if file_count > 10:
+        oldest_file = min(
+            (f for f in DATA_PATH.iterdir() if f.is_file()),
+            key=lambda el: el.stat().st_mtime
+        )
+        oldest_file.unlink()
+
 def upload():
     # Iterate through data folder to find most recent image
     # TODO: Delete old files once data folder goes over a certain number of files
@@ -40,5 +50,6 @@ def upload():
     try:
         with open(IMG_PATH, "rb") as img:
             upload_frame(img)
+            trim_dir(DATA_PATH)
     except Exception as err:
         print(f"Failed upload: {err}")
