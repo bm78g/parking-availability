@@ -39,7 +39,6 @@ def trim_dir(DATA_PATH):
 
 def upload():
     # Iterate through data folder to find most recent image
-    # TODO: Delete old files once data folder goes over a certain number of files
     DATA_PATH = Path(__file__).resolve().parent.parent / "data"
     latest_file = max(
         (f for f in DATA_PATH.iterdir() if f.is_file()),
